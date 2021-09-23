@@ -62,6 +62,9 @@ struct Filters2D : Generator<Filters2D> {
     Var yo{"yo"};
     Var zo{"zo"};
 
+    Func fx{"fx"};
+    Func fy{"fy"};
+
     void generate() {
         Expr radius0 = cast<int>(ceil(3.0f * scale));
         Expr radius1 = cast<int>(ceil(3.5f * scale));
@@ -100,49 +103,32 @@ struct Filters2D : Generator<Filters2D> {
         // in.rename(_0, x);
         // in.rename(_1, y);
 
-        gx(x, y) = sum(g0(r0) * in(x + r0, y));
-        gy(x, y) = sum(g0(r0) * in(x, y + r0));
+        fx(x, y) = {
+            sum(g0(r0) * in(x + r0, y)),
+            sum(g1(r1) * in(x + r1, y)),
+            sum(g2(r2) * in(x + r2, y)),
+        };
 
-        dx(x, y) = sum(g1(r1) * gy(x + r1, y));
-        dy(x, y) = sum(g1(r1) * gx(x, y + r1));
-        dxy(x, y) = sum(g1(r1) * dx(x, y + r1));
+        fy(x, y) = {
+            sum(g0(r0) * fx(x, y + r0)[0]),
+            hypot(sum(g0(r0) * fx(x, y + r0)[1]), sum(g1(r1) * fx(x, y + r1)[0])),
+            sum(g0(r0) * fx(x, y + r0)[2]) + sum(g2(r2) * fx(x, y + r2)[0]),
+        };
 
-        dxx(x, y) = sum(g2(r2) * gy(x + r2, y));
-        dyy(x, y) = sum(g2(r2) * gx(x, y + r2));
-
-        gaussian(x, y) = sum(g0(r0) * gx(x, y + r0));
-        gradmag(x, y) = hypot(dx(x, y), dy(x, y));
-        laplacian(x, y) = dxx(x, y) + dyy(x, y);
-
-        out(c, x, y) = undef<float>();
-        out(0, x, y) = gaussian(x, y);
-        out(1, x, y) = gradmag(x, y);
-        out(2, x, y) = laplacian(x, y);
-
-        out.bound(c, 0, 3);
+        out(c, x, y) = mux(c, fy(x, y));
     }
 
     void schedule() {
         const int vec = 64;
+        const int n = 3;
 
-        laplacian.compute_root().vectorize(x, vec);
-        dyy.compute_root().vectorize(x, vec);
-        dxx.compute_root().vectorize(x, vec);
-
-        gradmag.compute_root().vectorize(x, vec);
-        dxy.compute_root().vectorize(x, vec);
-        dy.compute_root().vectorize(x, vec);
-        dx.compute_root().vectorize(x, vec);
-
-        gaussian.compute_root().vectorize(x, vec);
-        gy.compute_root().vectorize(x, vec);
-        gx.compute_root().vectorize(x, vec);
-
-        in.compute_root();
+        out.split(x, xo, xi, vec).reorder(c, xi, y, xo).bound(c, 0, n).unroll(c).vectorize(xi);
+        fx.compute_at(out, xo).vectorize(x, vec);
+        in.store_root().compute_at(fx, x);
 
         kernels_compute_root(true);
 
-        // out.print_loop_nest();
+        out.print_loop_nest();
     }
 
     void kernels_compute_root(bool intermediate) {
