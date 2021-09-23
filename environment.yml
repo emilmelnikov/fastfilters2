@@ -1,0 +1,19 @@
+channels:
+  - ilastik-forge
+  - conda-forge
+  - nodefaults
+dependencies:
+  - black
+  - clang-format
+  - cmake
+  - fastfilters
+  - importlib-metadata
+  - invoke
+  - isort
+  - ninja
+  - numpy
+  - pip
+  - pytest
+  - pytest-benchmark
+  - python
+  - typing-extensions
