@@ -9,22 +9,26 @@ __version__ = version(__package__)
 del version
 
 import math
+
 import numpy
 
-import _fastfilters2 as _ff
+import _fastfilters2
 
 
 def _kernels(scale):
-    r0 = math.ceil(3 * scale)
-    r1 = math.ceil(3.5 * scale)
-    r2 = math.ceil(4 * scale)
+    if scale <= 0:
+        raise ValueError(f"kernel scale {scale} is not positive")
+
+    # Vigra uses round() instead of ceil().
+    r0 = max(1, math.ceil(3 * scale))
+    r1 = max(1, math.ceil(3.5 * scale))
+    r2 = max(1, math.ceil(4 * scale))
 
     x02 = numpy.square(numpy.arange(-r0, r0 + 1, dtype="d"))
     x1 = numpy.arange(-r1, r1 + 1, dtype="d")
     x22 = numpy.square(numpy.arange(-r2, r2 + 1, dtype="d"))
 
     scale2 = scale * scale
-
     a0 = 1 / (math.sqrt(math.tau) * scale)
     a1 = -a0 / scale2
     a2 = -a1 / scale2
@@ -34,9 +38,11 @@ def _kernels(scale):
     k1 = a1 * x1 * numpy.exp(b * x1 * x1)
     k2 = (a1 + a2 * x22) * numpy.exp(b * x22)
 
+    k2 -= k2.mean()
+
     k0 /= k0.sum()
-    k1 /= abs((x1 * k1).sum())
-    k2 /= (x22 * (k2 - k2.mean())).sum() / 2
+    k1 /= -(x1 * k1).sum()
+    k2 /= (x22 * k2).sum() / 2
 
     return k0.astype("f"), k1.astype("f"), k2.astype("f")
 
@@ -52,5 +58,5 @@ def call(arr, scale, *, kernels=_KERNELS):
         k = kernels[scale] = _kernels(scale)
     arr = numpy.asarray(arr, dtype="f")
     out = numpy.empty((*arr.shape, 3), dtype="f")
-    _ff.call(arr, out, *k)
+    _fastfilters2.call(arr, out, *k)
     return out
